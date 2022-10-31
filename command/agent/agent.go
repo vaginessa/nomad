@@ -115,7 +115,7 @@ type Agent struct {
 	builtinListener net.Listener
 	builtinDialer   *bufconndialer.BufConnWrapper
 
-	InmemSink *metrics.InmemSink
+	inmemSink *metrics.InmemSink
 }
 
 // NewAgent is used to create a new agent with the given configuration
@@ -124,7 +124,7 @@ func NewAgent(config *Config, logger log.InterceptLogger, logOutput io.Writer, i
 		config:     config,
 		logOutput:  logOutput,
 		shutdownCh: make(chan struct{}),
-		InmemSink:  inmem,
+		inmemSink:  inmem,
 	}
 
 	// Create the loggers
@@ -1283,6 +1283,11 @@ func (a *Agent) GetConfig() *Config {
 	defer a.configLock.Unlock()
 
 	return a.config
+}
+
+// GetMetricsSink returns the metrics sink.
+func (a *Agent) GetMetricsSink() *metrics.InmemSink {
+	return a.inmemSink
 }
 
 // setupConsul creates the Consul client and starts its main Run loop.

@@ -26,8 +26,10 @@ import (
 	"golang.org/x/time/rate"
 
 	"github.com/hashicorp/nomad/acl"
+	"github.com/hashicorp/nomad/client"
 	"github.com/hashicorp/nomad/helper/noxssrw"
 	"github.com/hashicorp/nomad/helper/tlsutil"
+	"github.com/hashicorp/nomad/nomad"
 	"github.com/hashicorp/nomad/nomad/structs"
 )
 
@@ -74,9 +76,18 @@ var (
 type handlerFn func(resp http.ResponseWriter, req *http.Request) (interface{}, error)
 type handlerByteFn func(resp http.ResponseWriter, req *http.Request) ([]byte, error)
 
+type RPCer interface {
+	RPC(string, any, any) error
+	Server() *nomad.Server
+	Client() *client.Client
+	Stats() map[string]map[string]string
+	GetConfig() *Config
+	GetMetricsSink() *metrics.InmemSink
+}
+
 // HTTPServer is used to wrap an Agent and expose it over an HTTP interface
 type HTTPServer struct {
-	agent      *Agent
+	agent      RPCer
 	mux        *http.ServeMux
 	listener   net.Listener
 	listenerCh chan struct{}
@@ -170,7 +181,7 @@ func NewHTTPServers(agent *Agent, config *Config) ([]*HTTPServer, error) {
 		srvs = append(srvs, srv)
 	}
 
-	// This HTTP server is only create when running in client mode, otherwise
+	// This HTTP server is only created when running in client mode, otherwise
 	// the builtinDialer and builtinListener will be nil.
 	if agent.builtinDialer != nil && agent.builtinListener != nil {
 		srv := &HTTPServer{
@@ -184,6 +195,8 @@ func NewHTTPServers(agent *Agent, config *Config) ([]*HTTPServer, error) {
 		}
 
 		srv.registerHandlers(config.EnableDebug)
+
+		srv.mux = srv.requireWorkloadIdentity(srv.mux)
 
 		httpServer := http.Server{
 			Addr:     srv.Addr,
@@ -199,6 +212,8 @@ func NewHTTPServers(agent *Agent, config *Config) ([]*HTTPServer, error) {
 		srvs = append(srvs, srv)
 	}
 
+	// This HTTP server is only
+
 	if serverInitializationErrors != nil {
 		for _, srv := range srvs {
 			srv.Shutdown()
@@ -206,6 +221,9 @@ func NewHTTPServers(agent *Agent, config *Config) ([]*HTTPServer, error) {
 	}
 
 	return srvs, serverInitializationErrors
+}
+
+func NewHTTPListener() {
 }
 
 // makeConnState returns a ConnState func for use in an http.Server. If
@@ -465,7 +483,8 @@ func (s *HTTPServer) registerHandlers(enableDebug bool) {
 	s.mux.Handle("/v1/vars", wrapCORS(s.wrap(s.VariablesListRequest)))
 	s.mux.Handle("/v1/var/", wrapCORSWithAllowedMethods(s.wrap(s.VariableSpecificRequest), "HEAD", "GET", "PUT", "DELETE"))
 
-	uiConfigEnabled := s.agent.config.UI != nil && s.agent.config.UI.Enabled
+	agentConfig := s.agent.GetConfig()
+	uiConfigEnabled := agentConfig.UI != nil && agentConfig.UI.Enabled
 
 	if uiEnabled && uiConfigEnabled {
 		s.mux.Handle("/ui/", http.StripPrefix("/ui/", s.handleUI(http.FileServer(&UIAssetWrapper{FileSystem: assetFS()}))))
@@ -484,7 +503,7 @@ func (s *HTTPServer) registerHandlers(enableDebug bool) {
 	s.mux.Handle("/", s.handleRootFallthrough())
 
 	if enableDebug {
-		if !s.agent.config.DevMode {
+		if !agentConfig.DevMode {
 			s.logger.Warn("enable_debug is set to true. This is insecure and should not be enabled in production")
 		}
 		s.mux.HandleFunc("/debug/pprof/", pprof.Index)
@@ -591,7 +610,7 @@ func errCodeFromHandler(err error) (int, string) {
 // wrap is used to wrap functions to make them more convenient
 func (s *HTTPServer) wrap(handler func(resp http.ResponseWriter, req *http.Request) (interface{}, error)) func(resp http.ResponseWriter, req *http.Request) {
 	f := func(resp http.ResponseWriter, req *http.Request) {
-		setHeaders(resp, s.agent.config.HTTPAPIResponseHeaders)
+		setHeaders(resp, s.agent.GetConfig().HTTPAPIResponseHeaders)
 		// Invoke the handler
 		reqURL := req.URL.String()
 		start := time.Now()
@@ -673,7 +692,7 @@ func (s *HTTPServer) wrap(handler func(resp http.ResponseWriter, req *http.Reque
 // Handler functions are responsible for setting Content-Type Header
 func (s *HTTPServer) wrapNonJSON(handler func(resp http.ResponseWriter, req *http.Request) ([]byte, error)) func(resp http.ResponseWriter, req *http.Request) {
 	f := func(resp http.ResponseWriter, req *http.Request) {
-		setHeaders(resp, s.agent.config.HTTPAPIResponseHeaders)
+		setHeaders(resp, s.agent.GetConfig().HTTPAPIResponseHeaders)
 		// Invoke the handler
 		reqURL := req.URL.String()
 		start := time.Now()
@@ -817,7 +836,7 @@ func (s *HTTPServer) parseRegion(req *http.Request, r *string) {
 	if other := req.URL.Query().Get("region"); other != "" {
 		*r = other
 	} else if *r == "" {
-		*r = s.agent.config.Region
+		*r = s.agent.GetConfig().Region
 	}
 }
 
