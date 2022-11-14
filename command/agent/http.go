@@ -196,13 +196,16 @@ func NewHTTPServers(agent *Agent, config *Config) ([]*HTTPServer, error) {
 
 		srv.registerHandlers(config.EnableDebug)
 
-		srv.mux = srv.requireWorkloadIdentity(srv.mux)
+		//TODO(schmichael) make this auth'd
+		//srv.mux = srv.requireWorkloadIdentity(srv.mux)
 
 		httpServer := http.Server{
 			Addr:     srv.Addr,
 			Handler:  srv.mux,
 			ErrorLog: newHTTPServerLogger(srv.logger),
 		}
+
+		agent.httpServer = &httpServer
 
 		go func() {
 			defer close(srv.listenerCh)

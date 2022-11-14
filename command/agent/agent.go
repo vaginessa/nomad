@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	golog "log"
 	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -114,6 +115,8 @@ type Agent struct {
 	// not running in client mode, these two fields will be nil.
 	builtinListener net.Listener
 	builtinDialer   *bufconndialer.BufConnWrapper
+	//XXX(schmichael) httpServer is for the client to add per-task nomad api listeners
+	httpServer *http.Server
 
 	inmemSink *metrics.InmemSink
 }
@@ -1004,6 +1007,7 @@ func (a *Agent) setupClient() error {
 	// we call NewClient.
 	a.builtinListener, a.builtinDialer = bufconndialer.New()
 	conf.TemplateDialer = a.builtinDialer
+	conf.TaskAPIServer = a.httpServer
 
 	nomadClient, err := client.NewClient(
 		conf, a.consulCatalog, a.consulProxies, a.consulService, nil)

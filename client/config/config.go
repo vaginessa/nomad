@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net/http"
 	"reflect"
 	"strconv"
 	"strings"
@@ -288,6 +289,9 @@ type Config struct {
 	// TemplateDialer is our custom HTTP dialer for consul-template. This is
 	// used for template functions which require access to the Nomad API.
 	TemplateDialer *bufconndialer.BufConnWrapper
+
+	//TODO(schmichael) write something
+	TaskAPIServer *http.Server
 
 	// Artifact configuration from the agent's config file.
 	Artifact *ArtifactConfig

@@ -68,6 +68,7 @@ func (tr *TaskRunner) initHooks() {
 		newArtifactHook(tr, tr.getter, hookLogger),
 		newStatsHook(tr, tr.clientConfig.StatsCollectionInterval, hookLogger),
 		newDeviceHook(tr.devicemanager, hookLogger),
+		newAPIHook(tr.clientConfig.TaskAPIServer, hookLogger),
 	}
 
 	// If the task has a CSI stanza, add the hook.
