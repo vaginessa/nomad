@@ -2,6 +2,7 @@ package agent
 
 import (
 	"bytes"
+	"context"
 	"crypto/tls"
 	"encoding/json"
 	"errors"
@@ -196,16 +197,13 @@ func NewHTTPServers(agent *Agent, config *Config) ([]*HTTPServer, error) {
 
 		srv.registerHandlers(config.EnableDebug)
 
-		//TODO(schmichael) make this auth'd
-		//srv.mux = srv.requireWorkloadIdentity(srv.mux)
-
 		httpServer := http.Server{
 			Addr:     srv.Addr,
 			Handler:  srv.mux,
 			ErrorLog: newHTTPServerLogger(srv.logger),
 		}
 
-		agent.httpServer = &httpServer
+		agent.builtinServer.SetServer(&httpServer)
 
 		go func() {
 			defer close(srv.listenerCh)
@@ -224,9 +222,6 @@ func NewHTTPServers(agent *Agent, config *Config) ([]*HTTPServer, error) {
 	}
 
 	return srvs, serverInitializationErrors
-}
-
-func NewHTTPListener() {
 }
 
 // makeConnState returns a ConnState func for use in an http.Server. If
@@ -518,6 +513,53 @@ func (s *HTTPServer) registerHandlers(enableDebug bool) {
 
 	// Register enterprise endpoints.
 	s.registerEnterpriseHandlers()
+}
+
+type builtinAPI struct {
+	srv        *http.Server
+	srvReadyCh chan struct{}
+}
+
+func newBuiltinAPI() *builtinAPI {
+	return &builtinAPI{
+		srvReadyCh: make(chan struct{}),
+	}
+}
+
+// SetServer sets the API HTTP server for Serve to add listeners to.
+//
+// It must be called exactly once and will panic if called more than once.
+func (b *builtinAPI) SetServer(srv *http.Server) {
+	select {
+	case <-b.srvReadyCh:
+		panic(fmt.Sprintf("SetServer called twice. first=%p second=%p", b.srv, srv))
+	default:
+	}
+	b.srv = srv
+	close(b.srvReadyCh)
+}
+
+// Serve the HTTP API on the listener unless the context is canceled before the
+// HTTP API is ready to serve listeners. A non-nil error will always be
+// returned on the chan.
+func (b *builtinAPI) Serve(ctx context.Context, l net.Listener) chan error {
+	errCh := make(chan error, 1)
+	select {
+	case <-ctx.Done():
+		// Caller canceled context before server was ready.
+		errCh <- ctx.Err()
+		close(errCh)
+		return errCh
+	case <-b.srvReadyCh:
+		// Server ready for listeners! Continue on...
+	}
+
+	go func() {
+		defer close(errCh)
+		errCh <- b.srv.Serve(l)
+	}()
+
+	return errCh
 }
 
 // HTTPCodedError is used to provide the HTTP error code
