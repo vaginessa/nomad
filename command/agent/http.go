@@ -935,6 +935,12 @@ func parseReverse(req *http.Request, b *structs.QueryOptions) {
 	b.Reverse = query.Get("reverse") == "true"
 }
 
+// parseNode parses the node_id query parameter for node specific requests.
+func parseNode(req *http.Request, nodeID *string) {
+	n := req.URL.Query().Get("node_id")
+	nodeID = &n
+}
+
 // parseWriteRequest is a convenience method for endpoints that need to parse a
 // write request.
 func (s *HTTPServer) parseWriteRequest(req *http.Request, w *structs.WriteRequest) {
