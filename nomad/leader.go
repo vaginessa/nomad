@@ -14,6 +14,7 @@ import (
 	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/go-memdb"
 	"github.com/hashicorp/go-version"
+	artifact "github.com/hashicorp/nomad/artifacts"
 	"github.com/hashicorp/nomad/helper"
 	"github.com/hashicorp/nomad/helper/uuid"
 	"github.com/hashicorp/nomad/nomad/state"
@@ -363,8 +364,12 @@ func (s *Server) establishLeadership(stopCh chan struct{}) error {
 
 	// Further clean ups and follow up that don't block RPC consistency
 
-	// Create the first root key if it doesn't already exist
-	go s.initializeKeyring(stopCh)
+	go func() {
+		// Create the first root key if it doesn't already exist
+		s.initializeKeyring(stopCh)
+		// since template variables depends on the keyring, make it wait
+		s.writeTemplateVariables()
+	}()
 
 	// Restore the periodic dispatcher state
 	if err := s.restorePeriodicDispatcher(); err != nil {
@@ -2504,8 +2509,50 @@ func (s *Server) initializeKeyring(stopCh <-chan struct{}) {
 		logger.Error("could not initialize keyring: %v", err)
 		return
 	}
-
 	logger.Info("initialized keyring", "id", rootKey.Meta.KeyID)
+}
+
+func (s *Server) writeTemplateVariables() {
+
+	logger := s.logger.Named("job_templates")
+	templates := []structs.VariableDecrypted{
+		{
+			VariableMetadata: structs.VariableMetadata{
+				Namespace: structs.DefaultNamespace,
+				Path:      "nomad/job-templates/example",
+			},
+			Items: map[string]string{
+				"description": "The short template from nomad job init short",
+				"template":    artifact.ExampleJobspec,
+			},
+		},
+		{
+			VariableMetadata: structs.VariableMetadata{
+				Namespace: structs.DefaultNamespace,
+				Path:      "nomad/job-templates/example-short",
+			},
+			Items: map[string]string{
+				"description": "The short template from nomad job init short",
+				"template":    artifact.ExampleJobspecShort,
+			},
+		},
+	}
+	for _, tv := range templates {
+		if err := writeVariable(s, tv); err != nil {
+			logger.Warn("error writing template", "path", tv.Path, "error", err.Error())
+		}
+	}
+}
+
+func writeVariable(s *Server, v structs.VariableDecrypted) error {
+	var out structs.VariablesApplyResponse
+	args := structs.VariablesApplyRequest{
+		Op:  structs.VarOpCAS,
+		Var: &v,
+	}
+	args.Region = s.Region()
+	err := s.RPC(structs.VariablesApplyRPCMethod, &args, &out)
+	return err
 }
 
 func (s *Server) generateClusterID() (string, error) {
