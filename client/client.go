@@ -1550,6 +1550,34 @@ func (c *Client) setupNode() error {
 		node.Meta["connect.proxy_concurrency"] = defaultConnectProxyConcurrency
 	}
 
+	// Merge dynamic node metadata
+	dynamicMeta, err := c.stateDB.GetNodeMeta()
+	if err != nil {
+		return fmt.Errorf("error reading dynamic node metadata: %w", err)
+	}
+	for dk, dv := range dynamicMeta {
+		if dv == nil {
+			_, ok := node.Meta[dk]
+			if ok {
+				// Unset static node metadata
+				delete(node.Meta, dk)
+			} else {
+				// Forget dynamic node metadata tombstone as there's no
+				// static value to erase.
+				delete(dynamicMeta, dk)
+			}
+			continue
+		}
+
+		node.Meta[dk] = *dv
+	}
+
+	// Write back dynamic node metadata as tombstones may have been removed
+	// above
+	if err := c.stateDB.PutNodeMeta(dynamicMeta); err != nil {
+		return fmt.Errorf("error syncing dynamic node metadata: %w", err)
+	}
+
 	c.config = newConfig
 	return nil
 }
