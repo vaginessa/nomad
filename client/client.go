@@ -792,20 +792,15 @@ func (c *Client) UpdateNode(cb func(*structs.Node)) *structs.Node {
 	c.configLock.Lock()
 	defer c.configLock.Unlock()
 
-	//TODO(schmichael): is this necessary?
-	// Client synchronizes all access to c.config but not to any config
-	// fields, so we must make a shallow copy of the config to mutate
-	// config.Node.
-	newConfig := *c.config
-
-	// Create a new Node for updating as the shallow copy's Node may have
-	// concurrent readers
-	newNode := newConfig.Node.Copy()
+	// Create a new copy of Node for updating
+	newNode := c.config.Node.Copy()
 
 	// newNode is now a fresh unshared copy, mutate away!
 	cb(newNode)
 
-	// Copy back the mutated structs
+	// Shallow copy config before mutating Node pointer which might have
+	// concurrent readers
+	newConfig := *c.config
 	newConfig.Node = newNode
 	c.config = &newConfig
 
