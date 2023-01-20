@@ -25,7 +25,7 @@ func (n *Nodes) Meta() *NodeMeta {
 // receiving the request is modified.
 func (n *NodeMeta) Apply(meta *NodeMetaApplyRequest, qo *WriteOptions) (*NodeMetaResponse, error) {
 	var out NodeMetaResponse
-	_, err := n.client.write("/v1/client/metadata", meta, &out, qo)
+	_, err := n.client.post("/v1/client/metadata", meta, &out, qo)
 	if err != nil {
 		return nil, err
 	}
