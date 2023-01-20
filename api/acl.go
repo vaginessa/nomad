@@ -456,7 +456,7 @@ func (c *Client) ACLOIDC() *ACLOIDC {
 // be visited in order to sign in to the provider.
 func (a *ACLOIDC) GetAuthURL(req *ACLOIDCAuthURLRequest, q *WriteOptions) (*ACLOIDCAuthURLResponse, *WriteMeta, error) {
 	var resp ACLOIDCAuthURLResponse
-	wm, err := a.client.write("/v1/acl/oidc/auth-url", req, &resp, q)
+	wm, err := a.client.put("/v1/acl/oidc/auth-url", req, &resp, q)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -467,7 +467,7 @@ func (a *ACLOIDC) GetAuthURL(req *ACLOIDCAuthURLRequest, q *WriteOptions) (*ACLO
 // appropriate claims attached.
 func (a *ACLOIDC) CompleteAuth(req *ACLOIDCCompleteAuthRequest, q *WriteOptions) (*ACLToken, *WriteMeta, error) {
 	var resp ACLToken
-	wm, err := a.client.write("/v1/acl/oidc/complete-auth", req, &resp, q)
+	wm, err := a.client.put("/v1/acl/oidc/complete-auth", req, &resp, q)
 	if err != nil {
 		return nil, nil, err
 	}
