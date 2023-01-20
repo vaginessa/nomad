@@ -733,7 +733,7 @@ func (c *Client) reloadTLSConnections(newConfig *nconfig.TLSConfig) error {
 	return nil
 }
 
-// Reload allows a client to reload its configuration on the fly
+// Reload allows a client to reload parts of its configuration on the fly
 func (c *Client) Reload(newConfig *config.Config) error {
 	existing := c.GetConfig()
 	shouldReloadTLS, err := tlsutil.ShouldReloadRPCConnections(existing.TLSConfig, newConfig.TLSConfig)
@@ -743,7 +743,9 @@ func (c *Client) Reload(newConfig *config.Config) error {
 	}
 
 	if shouldReloadTLS {
-		return c.reloadTLSConnections(newConfig.TLSConfig)
+		if err := c.reloadTLSConnections(newConfig.TLSConfig); err != nil {
+			return err
+		}
 	}
 
 	c.fingerprintManager.Reload()
