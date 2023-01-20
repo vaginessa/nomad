@@ -2,6 +2,7 @@ package command
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/hashicorp/nomad/api"
@@ -48,6 +49,25 @@ func (f *NodeCommand) Name() string { return "node" }
 
 func (f *NodeCommand) Run(args []string) int {
 	return cli.RunResultHelp
+}
+
+// formatNodeMeta is used to format node metadata in columns.
+func formatNodeMeta(meta map[string]string) string {
+	// Print the meta
+	keys := make([]string, 0, len(meta))
+	for k := range meta {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	var rows []string
+	for _, k := range keys {
+		if k != "" {
+			rows = append(rows, fmt.Sprintf("%s|%s", k, meta[k]))
+		}
+	}
+
+	return formatKV(rows)
 }
 
 // lookupNodeID looks up a nodeID prefix and returns the full ID or an error.

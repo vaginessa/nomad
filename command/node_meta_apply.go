@@ -14,16 +14,13 @@ type NodeMetaApplyCommand struct {
 
 func (c *NodeMetaApplyCommand) Help() string {
 	helpText := `
-Usage: nomad node meta apply [-unset ...] key1=value1 ... keyN=valueN
+Usage: nomad node meta apply [-node-id ...] [-unset ...] key1=value1 ... kN=vN
 
-  Modify a client node's metadata. This command only works on client nodes, and
-  can be used to update the scheduling metadata the node registers.
+  Modify a node's metadata. This command only works on client agents, and can
+  be used to update the scheduling metadata the node registers.
 
   Changes are batched and may take up to 10 seconds to propagate to the
   servers and affect scheduling.
-
-  The arguments behave differently depending on the flags given. See each
-  flag's description for its specific requirements.
 
 General Options:
 
@@ -116,5 +113,5 @@ func (c *NodeMetaApplyCommand) AutocompleteFlags() complete.Flags {
 }
 
 func (c *NodeMetaApplyCommand) AutocompleteArgs() complete.Predictor {
-	return complete.PredictNothing
+	return complete.PredictAnything
 }
