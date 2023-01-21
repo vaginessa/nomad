@@ -815,28 +815,6 @@ func (s *BoltStateDB) PutNodeMeta(meta map[string]*string) error {
 	})
 }
 
-// MergeNodeMeta merges dynamic node metadata with existing dynamic node
-// metadata.
-func (s *BoltStateDB) MergeNodeMeta(meta map[string]*string) error {
-	return s.db.Update(func(tx *boltdd.Tx) error {
-		b, err := tx.CreateBucketIfNotExists(nodeMetaBucket)
-		if err != nil {
-			return err
-		}
-
-		// Before writing merge with existing dynamic node metadata
-		existing, err := getNodeMeta(b)
-		if err != nil {
-			return err
-		}
-
-		for k, v := range meta {
-			existing[k] = v
-		}
-		return b.Put(nodeMetaKey, existing)
-	})
-}
-
 // GetNodeMeta retrieves node metadata for merging with the copy from
 // the Client's config.
 func (s *BoltStateDB) GetNodeMeta() (m map[string]*string, err error) {

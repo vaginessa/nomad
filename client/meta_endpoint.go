@@ -1,7 +1,6 @@
 package client
 
 import (
-	"fmt"
 	"time"
 
 	metrics "github.com/armon/go-metrics"
@@ -18,8 +17,8 @@ func newNodeMetaEndpoint(c *Client) *NodeMeta {
 	return n
 }
 
-func (n *NodeMeta) Apply(args *structs.NodeMetaApplyRequest, reply *structs.NodeMetaResponse) error {
-	defer metrics.MeasureSince([]string{"client", "node_meta", "apply"}, time.Now())
+func (n *NodeMeta) Set(args *structs.NodeMetaSetRequest, reply *structs.NodeMetaResponse) error {
+	defer metrics.MeasureSince([]string{"client", "node_meta", "set"}, time.Now())
 
 	// Check node write permissions
 	if aclObj, err := n.c.ResolveToken(args.AuthToken); err != nil {
@@ -28,15 +27,23 @@ func (n *NodeMeta) Apply(args *structs.NodeMetaApplyRequest, reply *structs.Node
 		return nstructs.ErrPermissionDenied
 	}
 
-	var err error
+	var stateErr error
+	var dynamic map[string]*string
 
 	newNode := n.c.UpdateNode(func(node *structs.Node) {
 		// First update the Client's state store. This must be done
 		// atomically with updating the metadata inmemory to avoid
 		// interleaving updates causing incoherency between the state
 		// store and inmemory.
-		if err := n.c.stateDB.MergeNodeMeta(args.Meta); err != nil {
-			err = fmt.Errorf("failed to apply dynamic node metadata: %w", err)
+		if dynamic, stateErr = n.c.stateDB.GetNodeMeta(); stateErr != nil {
+			return
+		}
+
+		for k, v := range args.Meta {
+			dynamic[k] = v
+		}
+
+		if stateErr = n.c.stateDB.PutNodeMeta(dynamic); stateErr != nil {
 			return
 		}
 
@@ -50,19 +57,20 @@ func (n *NodeMeta) Apply(args *structs.NodeMetaApplyRequest, reply *structs.Node
 		}
 	})
 
-	if err != nil {
-		return err
+	if stateErr != nil {
+		return stateErr
 	}
 
 	// Trigger an async node update
 	n.c.updateNode()
 
 	reply.Meta = newNode.Meta
+	reply.Dynamic = dynamic
 	return nil
 }
 
 func (n *NodeMeta) Read(args *structs.NodeSpecificRequest, resp *structs.NodeMetaResponse) error {
-	defer metrics.MeasureSince([]string{"client", "node_meta", "reaj"}, time.Now())
+	defer metrics.MeasureSince([]string{"client", "node_meta", "read"}, time.Now())
 
 	// Check node read permissions
 	if aclObj, err := n.c.ResolveToken(args.AuthToken); err != nil {
@@ -71,7 +79,17 @@ func (n *NodeMeta) Read(args *structs.NodeSpecificRequest, resp *structs.NodeMet
 		return nstructs.ErrPermissionDenied
 	}
 
-	resp.Meta = n.c.Node().Meta
+	// Must acquire configLock to ensure reads aren't interleaved with
+	// writes
+	n.c.configLock.Lock()
+	defer n.c.configLock.Unlock()
 
+	dynamic, err := n.c.stateDB.GetNodeMeta()
+	if err != nil {
+		return err
+	}
+
+	resp.Meta = n.c.config.Node.Meta
+	resp.Dynamic = dynamic
 	return nil
 }

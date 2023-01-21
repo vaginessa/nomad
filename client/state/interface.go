@@ -102,10 +102,6 @@ type StateDB interface {
 	// This overwrites existing dynamic node metadata entirely.
 	PutNodeMeta(map[string]*string) error
 
-	// MergeNodeMeta merges dynamic node metadata with existing dynamic node
-	// metadata.
-	MergeNodeMeta(map[string]*string) error
-
 	// GetNodeMeta retrieves node metadata for merging with the copy from
 	// the Client's config.
 	GetNodeMeta() (map[string]*string, error)

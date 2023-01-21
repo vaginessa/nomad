@@ -8,13 +8,13 @@ import (
 	"github.com/posener/complete"
 )
 
-type NodeMetaApplyCommand struct {
+type NodeMetaSetCommand struct {
 	Meta
 }
 
-func (c *NodeMetaApplyCommand) Help() string {
+func (c *NodeMetaSetCommand) Help() string {
 	helpText := `
-Usage: nomad node meta apply [-node-id ...] [-unset ...] key1=value1 ... kN=vN
+Usage: nomad node meta set [-node-id ...] [-unset ...] key1=value1 ... kN=vN
 
   Modify a node's metadata. This command only works on client agents, and can
   be used to update the scheduling metadata the node registers.
@@ -26,7 +26,7 @@ General Options:
 
   ` + generalOptionsUsage(usageOptsDefault|usageOptsNoNamespace) + `
 
-Node Meta Options:
+Node Meta Set Options:
 
   -node-id
     Updates metadata on the specified node. If not specified the node receiving
@@ -36,18 +36,18 @@ Node Meta Options:
     Unset the command separated list of keys.
 
     Example:
-      $ nomad node meta apply -unset testing,tempvar ready=1 role=preinit-db
+      $ nomad node meta set -unset testing,tempvar ready=1 role=preinit-db
 `
 	return strings.TrimSpace(helpText)
 }
 
-func (c *NodeMetaApplyCommand) Synopsis() string {
+func (c *NodeMetaSetCommand) Synopsis() string {
 	return "Modify node metadata"
 }
 
-func (c *NodeMetaApplyCommand) Name() string { return "node meta apply" }
+func (c *NodeMetaSetCommand) Name() string { return "node meta set" }
 
-func (c *NodeMetaApplyCommand) Run(args []string) int {
+func (c *NodeMetaSetCommand) Run(args []string) int {
 	var unset, nodeID string
 
 	flags := c.Meta.FlagSet(c.Name(), FlagSetClient)
@@ -91,12 +91,12 @@ func (c *NodeMetaApplyCommand) Run(args []string) int {
 		meta[k] = nil
 	}
 
-	req := api.NodeMetaApplyRequest{
+	req := api.NodeMetaSetRequest{
 		NodeID: nodeID,
 		Meta:   meta,
 	}
 
-	if _, err := client.Nodes().Meta().Apply(&req, nil); err != nil {
+	if _, err := client.Nodes().Meta().Set(&req, nil); err != nil {
 		c.Ui.Error(fmt.Sprintf("Error applying dynamic node metadata: %s", err))
 		return 1
 	}
@@ -104,7 +104,7 @@ func (c *NodeMetaApplyCommand) Run(args []string) int {
 	return 0
 }
 
-func (c *NodeMetaApplyCommand) AutocompleteFlags() complete.Flags {
+func (c *NodeMetaSetCommand) AutocompleteFlags() complete.Flags {
 	return mergeAutocompleteFlags(c.Meta.AutocompleteFlags(FlagSetClient),
 		complete.Flags{
 			"-node-id": complete.PredictNothing,
@@ -112,6 +112,6 @@ func (c *NodeMetaApplyCommand) AutocompleteFlags() complete.Flags {
 		})
 }
 
-func (c *NodeMetaApplyCommand) AutocompleteArgs() complete.Predictor {
+func (c *NodeMetaSetCommand) AutocompleteArgs() complete.Predictor {
 	return complete.PredictAnything
 }

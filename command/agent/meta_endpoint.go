@@ -11,7 +11,7 @@ func (s *HTTPServer) NodeMetaRequest(resp http.ResponseWriter, req *http.Request
 	case http.MethodGet:
 		return s.nodeMetaGet(resp, req)
 	case http.MethodPost:
-		return s.nodeMetaApply(resp, req)
+		return s.nodeMetaSet(resp, req)
 	default:
 		return nil, CodedError(405, ErrInvalidMethod)
 	}
@@ -51,15 +51,20 @@ func (s *HTTPServer) nodeMetaGet(resp http.ResponseWriter, req *http.Request) (i
 	return reply, nil
 }
 
-func (s *HTTPServer) nodeMetaApply(resp http.ResponseWriter, req *http.Request) (interface{}, error) {
+func (s *HTTPServer) nodeMetaSet(resp http.ResponseWriter, req *http.Request) (interface{}, error) {
 	// Build the request by decoding body and then parsing all common
 	// parameters and node id
-	args := structs.NodeMetaApplyRequest{}
+	args := structs.NodeMetaSetRequest{}
 	if err := decodeBody(req, &args); err != nil {
 		return nil, CodedError(http.StatusBadRequest, err.Error())
 	}
 	if len(args.Meta) == 0 {
 		return nil, CodedError(http.StatusBadRequest, "request missing required Meta object")
+	}
+	for k := range args.Meta {
+		if k == "" {
+			return nil, CodedError(http.StatusBadRequest, "metadata keys must not be empty")
+		}
 	}
 
 	s.parseWriteRequest(req, &args.WriteRequest)
@@ -69,15 +74,15 @@ func (s *HTTPServer) nodeMetaApply(resp http.ResponseWriter, req *http.Request) 
 	useLocalClient, useClientRPC, useServerRPC := s.rpcHandlerForNode(args.NodeID)
 
 	// Make the RPC
-	const rpc = "NodeMeta.Apply"
+	const method = "NodeMeta.Set"
 	var reply structs.NodeMetaResponse
 	var rpcErr error
 	if useLocalClient {
-		rpcErr = s.agent.Client().ClientRPC(rpc, &args, &reply)
+		rpcErr = s.agent.Client().ClientRPC(method, &args, &reply)
 	} else if useClientRPC {
-		rpcErr = s.agent.Client().RPC(rpc, &args, &reply)
+		rpcErr = s.agent.Client().RPC(method, &args, &reply)
 	} else if useServerRPC {
-		rpcErr = s.agent.Server().RPC(rpc, &args, &reply)
+		rpcErr = s.agent.Server().RPC(method, &args, &reply)
 	} else {
 		rpcErr = CodedError(400, "No local Node and node_id not provided")
 	}

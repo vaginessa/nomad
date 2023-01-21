@@ -14,7 +14,7 @@ func (c *NodeMetaCommand) Help() string {
 	helpText := `
 Usage: nomad node meta [subcommand]
 
-  Interact with a node's metadata. The apply subcommand allows for dynamically
+  Interact with a node's metadata. The set subcommand allows for dynamically
   updating node metadata. The get subcommand allows reading all of the metadata
   set on the client. All commands interact directly with a client and allow
   setting a custom target with the -node-id option.

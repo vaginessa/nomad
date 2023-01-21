@@ -108,10 +108,6 @@ func (n NoopDB) PutNodeMeta(map[string]*string) error {
 	return nil
 }
 
-func (n NoopDB) MergeNodeMeta(map[string]*string) error {
-	return nil
-}
-
 func (n NoopDB) GetNodeMeta() (map[string]*string, error) {
 	return nil, nil
 }

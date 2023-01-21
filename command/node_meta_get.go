@@ -2,6 +2,7 @@ package command
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/posener/complete"
@@ -100,7 +101,28 @@ func (c *NodeMetaGetCommand) Run(args []string) int {
 		return 0
 	}
 
+	c.Ui.Output(c.Colorize().Color("[bold]All Meta[reset]"))
 	c.Ui.Output(formatNodeMeta(meta.Meta))
+
+	// Print dynamic meta
+	c.Ui.Output(c.Colorize().Color("\n[bold]Dynamic Meta[reset]"))
+	keys := make([]string, 0, len(meta.Dynamic))
+	for k := range meta.Dynamic {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	var rows []string
+	for _, k := range keys {
+		v := "<unset>"
+		if meta.Dynamic[k] != nil {
+			v = *meta.Dynamic[k]
+		}
+		rows = append(rows, fmt.Sprintf("%s|%s", k, v))
+	}
+
+	c.Ui.Output(formatKV(rows))
+
 	return 0
 }
 
