@@ -115,7 +115,8 @@ type Agent struct {
 	builtinListener net.Listener
 	builtinDialer   *bufconndialer.BufConnWrapper
 
-	//TODO(schmichael)
+	//TODO(schmichael) builtinServer is an HTTP server for attaching
+	//per-task listeners. Always requires auth.
 	builtinServer *builtinAPI
 
 	inmemSink *metrics.InmemSink

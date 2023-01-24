@@ -496,6 +496,27 @@ func (ai *AuthenticatedIdentity) GetClaims() *IdentityClaims {
 	return ai.Claims
 }
 
+// TODO(schmichael) this is just for debugging, feel free to remove
+// String version of the identity. No secrets, safe for display.
+func (ai *AuthenticatedIdentity) String() string {
+	if ai.ACLToken != nil {
+		return "acl:" + ai.ACLToken.AccessorID
+	}
+	if ai.Claims != nil {
+		return ai.Claims.String()
+	}
+	if ai.ClientID != "" {
+		return ai.ClientID
+	}
+	if ai.ServerID != "" {
+		return ai.ServerID
+	}
+	if ai.TLSName != "" {
+		return ai.TLSName
+	}
+	return ""
+}
+
 type RequestWithIdentity interface {
 	GetAuthToken() string
 	SetIdentity(identity *AuthenticatedIdentity)
@@ -10577,6 +10598,14 @@ type IdentityClaims struct {
 	TaskName     string `json:"nomad_task"`
 
 	jwt.RegisteredClaims
+}
+
+// TODO(schmichael) this is just for debugging, feel free to remove
+// String version of the identity. No secrets, safe for display.
+func (ic *IdentityClaims) String() string {
+	//TODO(schmichael) use "jwt" or something vendor specific like "nwi"
+	//for Nomad Workload Identity here?
+	return fmt.Sprintf("jwt:%s/%s/%s/%s", ic.Namespace, ic.JobID, ic.AllocationID, ic.TaskName)
 }
 
 // AllocationDiff is another named type for Allocation (to use the same fields),

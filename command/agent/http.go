@@ -197,9 +197,10 @@ func NewHTTPServers(agent *Agent, config *Config) ([]*HTTPServer, error) {
 
 		srv.registerHandlers(config.EnableDebug)
 
+		// builtinServer adds a wrapper to always authenticate requests
 		httpServer := http.Server{
 			Addr:     srv.Addr,
-			Handler:  srv.mux,
+			Handler:  newAuthMiddleware(srv, srv.mux),
 			ErrorLog: newHTTPServerLogger(srv.logger),
 		}
 
@@ -1039,4 +1040,55 @@ func wrapCORS(f func(http.ResponseWriter, *http.Request)) http.Handler {
 // method list and returns a http.Handler
 func wrapCORSWithAllowedMethods(f func(http.ResponseWriter, *http.Request), methods ...string) http.Handler {
 	return allowCORSWithMethods(methods...).Handler(http.HandlerFunc(f))
+}
+
+// TODO(schmichael) caching - see client/acl.go
+// TODO(schmichael) where should this thing live
+type authMiddleware struct {
+	srv     *HTTPServer
+	wrapped http.Handler
+}
+
+func newAuthMiddleware(srv *HTTPServer, h http.Handler) http.Handler {
+	return &authMiddleware{
+		srv:     srv,
+		wrapped: h,
+	}
+}
+
+func (a *authMiddleware) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
+	args := structs.GenericRequest{}
+	reply := structs.ACLWhoAmIResponse{}
+	if a.srv.parse(resp, req, &args.Region, &args.QueryOptions) {
+		// Error parsing request, 400
+		resp.WriteHeader(http.StatusBadRequest)
+		resp.Write([]byte("Invalid request parameters\n"))
+		return
+	}
+
+	if args.AuthToken == "" {
+		// 401 instead of 403 since no token was present.
+		resp.WriteHeader(http.StatusUnauthorized)
+		resp.Write([]byte("Authorization required\n"))
+		return
+	}
+
+	if err := a.srv.agent.RPC("ACL.WhoAmI", &args, &reply); err != nil {
+		a.srv.logger.Error("error authenticating built API request", "error", err, "url", req.URL, "method", req.Method)
+		resp.WriteHeader(500)
+		resp.Write([]byte("Server error authenticating request\n"))
+		return
+	}
+
+	//TODO(schmichael) this is janky but works?
+	// Require an acl token or workload identity
+	if reply.Identity == nil || (reply.Identity.ACLToken == nil && reply.Identity.Claims == nil) {
+		resp.WriteHeader(http.StatusForbidden)
+		resp.Write([]byte("Forbidden\n"))
+		return
+	}
+
+	a.srv.logger.Trace("Authenticated request", "id", reply.Identity, "method", req.Method, "url", req.URL)
+	a.wrapped.ServeHTTP(resp, req)
+	return
 }
