@@ -39,6 +39,11 @@ func (n *NodeMeta) Set(args *structs.NodeMetaSetRequest, reply *structs.NodeMeta
 			return
 		}
 
+		if dynamic == nil {
+			// DevMode/NoopDB returns a nil map, so initialize it
+			dynamic = make(map[string]*string)
+		}
+
 		for k, v := range args.Meta {
 			dynamic[k] = v
 		}
