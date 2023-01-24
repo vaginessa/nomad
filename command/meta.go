@@ -2,6 +2,7 @@ package command
 
 import (
 	"flag"
+	"io"
 	"os"
 	"strings"
 
@@ -29,10 +30,17 @@ const (
 	FlagSetDefault              = FlagSetClient
 )
 
+type UiDimensions struct {
+	Width  int
+	Height int
+	Err    error
+}
+
 // Meta contains the meta-options and functionality that nearly every
 // Nomad command inherits.
 type Meta struct {
-	Ui cli.Ui
+	Ui            cli.Ui
+	ErrDimensions UiDimensions
 
 	// These are set by the command line flags.
 	flagAddress string
@@ -187,6 +195,8 @@ func (m *Meta) SetupUi(args []string) {
 	noColor := os.Getenv(EnvNomadCLINoColor) != ""
 	forceColor := os.Getenv(EnvNomadCLIForceColor) != ""
 
+	m.ErrDimensions.Width, m.ErrDimensions.Height, m.ErrDimensions.Err = terminal.GetSize(int(os.Stderr.Fd()))
+
 	for _, arg := range args {
 		// Check if color is set
 		if arg == "-no-color" || arg == "--no-color" {
@@ -196,23 +206,40 @@ func (m *Meta) SetupUi(args []string) {
 		}
 	}
 
-	m.Ui = &cli.BasicUi{
-		Reader:      os.Stdin,
-		Writer:      colorable.NewColorableStdout(),
-		ErrorWriter: colorable.NewColorableStderr(),
+	var outWriter io.Writer
+	var errWriter io.Writer
+
+	// Only use colorable UI if not disabled and stdout is a tty or colors are
+	// forced.
+	isStdOutTerminal := terminal.IsTerminal(int(os.Stdout.Fd()))
+	useColor := !noColor && (isStdOutTerminal || forceColor)
+	if useColor {
+		outWriter = colorable.NewColorableStdout()
+	} else {
+		outWriter = colorable.NewNonColorable(os.Stdout)
 	}
 
-	// Only use colored UI if not disabled and stdout is a tty or colors are
+	// Only use colorable writer if not disabled and stderr is a tty or colors are
 	// forced.
-	isTerminal := terminal.IsTerminal(int(os.Stdout.Fd()))
-	useColor := !noColor && (isTerminal || forceColor)
+	isStdErrTerminal := terminal.IsTerminal(int(os.Stderr.Fd()))
+	useColor = !noColor && (isStdErrTerminal || forceColor)
 	if useColor {
-		m.Ui = &cli.ColoredUi{
-			ErrorColor: cli.UiColorRed,
-			WarnColor:  cli.UiColorYellow,
-			InfoColor:  cli.UiColorGreen,
-			Ui:         m.Ui,
-		}
+		errWriter = colorable.NewColorableStderr()
+	} else {
+		outWriter = colorable.NewNonColorable(os.Stderr)
+	}
+
+	m.Ui = &cli.BasicUi{
+		Reader:      os.Stdin,
+		Writer:      outWriter,
+		ErrorWriter: errWriter,
+	}
+
+	m.Ui = &cli.ColoredUi{
+		ErrorColor: cli.UiColorRed,
+		WarnColor:  cli.UiColorYellow,
+		InfoColor:  cli.UiColorGreen,
+		Ui:         m.Ui,
 	}
 }
 
