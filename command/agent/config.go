@@ -227,6 +227,12 @@ type ClientConfig struct {
 	// MemoryMB is used to override any detected or default total memory.
 	MemoryMB int `hcl:"memory_total_mb"`
 
+	// DiskTotalMB is used to override any detected or default total disk space.
+	DiskTotalMB int `hcl:"disk_total_mb"`
+
+	// DiskFreeMB is used to override any detected or default free disk space.
+	DiskFreeMB int `hcl:"disk_free_mb"`
+
 	// ReservableCores is used to override detected reservable cpu cores.
 	ReserveableCores string `hcl:"reservable_cores"`
 
@@ -610,6 +616,25 @@ type ServerConfig struct {
 
 	// RaftBoltConfig configures boltdb as used by raft.
 	RaftBoltConfig *RaftBoltConfig `hcl:"raft_boltdb"`
+
+	// RaftSnapshotThreshold controls how many outstanding logs there must be
+	// before we perform a snapshot. This is to prevent excessive snapshotting by
+	// replaying a small set of logs instead. The value passed here is the initial
+	// setting used. This can be tuned during operation with a hot reload.
+	RaftSnapshotThreshold *int `hcl:"raft_snapshot_threshold"`
+
+	// RaftSnapshotInterval controls how often we check if we should perform a
+	// snapshot. We randomly stagger between this value and 2x this value to avoid
+	// the entire cluster from performing a snapshot at once. The value passed
+	// here is the initial setting used. This can be tuned during operation with a
+	// hot reload.
+	RaftSnapshotInterval *string `hcl:"raft_snapshot_interval"`
+
+	// RaftTrailingLogs controls how many logs are left after a snapshot. This is
+	// used so that we can quickly replay logs on a follower instead of being
+	// forced to send an entire snapshot. The value passed here is the initial
+	// setting used. This can be tuned during operation using a hot reload.
+	RaftTrailingLogs *int `hcl:"raft_trailing_logs"`
 }
 
 func (s *ServerConfig) Copy() *ServerConfig {
@@ -632,6 +657,9 @@ func (s *ServerConfig) Copy() *ServerConfig {
 	ns.ExtraKeysHCL = slices.Clone(s.ExtraKeysHCL)
 	ns.Search = s.Search.Copy()
 	ns.RaftBoltConfig = s.RaftBoltConfig.Copy()
+	ns.RaftSnapshotInterval = pointer.Copy(s.RaftSnapshotInterval)
+	ns.RaftSnapshotThreshold = pointer.Copy(s.RaftSnapshotThreshold)
+	ns.RaftTrailingLogs = pointer.Copy(s.RaftTrailingLogs)
 	return &ns
 }
 
@@ -855,6 +883,12 @@ type Telemetry struct {
 	// high numbers of single count dispatch jobs as the metrics for each take up
 	// a small memory overhead.
 	DisableDispatchedJobSummaryMetrics bool `hcl:"disable_dispatched_job_summary_metrics"`
+
+	// DisableRPCRateMetricsLabels drops the label for the identity of the
+	// requester when publishing metrics on RPC rate on the server. This may be
+	// useful to control metrics collection costs in environments where request
+	// rate is well-controlled but cardinality of requesters is high.
+	DisableRPCRateMetricsLabels bool `hcl:"disable_rpc_rate_metrics_labels"`
 
 	// Circonus: see https://github.com/circonus-labs/circonus-gometrics
 	// for more details on the various configuration options.
@@ -1984,6 +2018,12 @@ func (a *ClientConfig) Merge(b *ClientConfig) *ClientConfig {
 	if b.MemoryMB != 0 {
 		result.MemoryMB = b.MemoryMB
 	}
+	if b.DiskTotalMB != 0 {
+		result.DiskTotalMB = b.DiskTotalMB
+	}
+	if b.DiskFreeMB != 0 {
+		result.DiskFreeMB = b.DiskFreeMB
+	}
 	if b.MaxKillTimeout != "" {
 		result.MaxKillTimeout = b.MaxKillTimeout
 	}
@@ -2202,6 +2242,9 @@ func (a *Telemetry) Merge(b *Telemetry) *Telemetry {
 
 	if b.DisableDispatchedJobSummaryMetrics {
 		result.DisableDispatchedJobSummaryMetrics = b.DisableDispatchedJobSummaryMetrics
+	}
+	if b.DisableRPCRateMetricsLabels {
+		result.DisableRPCRateMetricsLabels = b.DisableRPCRateMetricsLabels
 	}
 
 	return &result

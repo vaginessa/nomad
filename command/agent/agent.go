@@ -212,6 +212,32 @@ func convertServerConfig(agentConfig *Config) (*nomad.Config, error) {
 			return nil, fmt.Errorf("raft_multiplier cannot be %d. Must be between 1 and %d", *agentConfig.Server.RaftMultiplier, MaxRaftMultiplier)
 		}
 	}
+
+	if vPtr := agentConfig.Server.RaftTrailingLogs; vPtr != nil {
+		if *vPtr < 1 {
+			return nil, fmt.Errorf("raft_trailing_logs must be non-negative, got %d", *vPtr)
+		}
+		conf.RaftConfig.TrailingLogs = uint64(*vPtr)
+	}
+
+	if vPtr := agentConfig.Server.RaftSnapshotInterval; vPtr != nil {
+		dur, err := time.ParseDuration(*vPtr)
+		if err != nil {
+			return nil, err
+		}
+		if dur < 5*time.Millisecond {
+			return nil, fmt.Errorf("raft_snapshot_interval must be greater than 5ms, got %q", *vPtr)
+		}
+		conf.RaftConfig.SnapshotInterval = dur
+	}
+
+	if vPtr := agentConfig.Server.RaftSnapshotThreshold; vPtr != nil {
+		if *vPtr < 1 {
+			return nil, fmt.Errorf("raft_snapshot_threshold must be non-negative, got %d", *vPtr)
+		}
+		conf.RaftConfig.SnapshotThreshold = uint64(*vPtr)
+	}
+
 	conf.RaftConfig.ElectionTimeout *= time.Duration(raftMultiplier)
 	conf.RaftConfig.HeartbeatTimeout *= time.Duration(raftMultiplier)
 	conf.RaftConfig.LeaderLeaseTimeout *= time.Duration(raftMultiplier)
@@ -446,6 +472,7 @@ func convertServerConfig(agentConfig *Config) (*nomad.Config, error) {
 	// Setup telemetry related config
 	conf.StatsCollectionInterval = agentConfig.Telemetry.collectionInterval
 	conf.DisableDispatchedJobSummaryMetrics = agentConfig.Telemetry.DisableDispatchedJobSummaryMetrics
+	conf.DisableRPCRateMetricsLabels = agentConfig.Telemetry.DisableRPCRateMetricsLabels
 
 	if d, err := time.ParseDuration(agentConfig.Limits.RPCHandshakeTimeout); err != nil {
 		return nil, fmt.Errorf("error parsing rpc_handshake_timeout: %v", err)
@@ -525,7 +552,7 @@ func (a *Agent) serverConfig() (*nomad.Config, error) {
 }
 
 // finalizeServerConfig sets configuration fields on the server config that are
-// not staticly convertable and are from the agent.
+// not statically convertible and are from the agent.
 func (a *Agent) finalizeServerConfig(c *nomad.Config) {
 	// Setup the logging
 	c.Logger = a.logger
@@ -553,7 +580,7 @@ func (a *Agent) clientConfig() (*clientconfig.Config, error) {
 }
 
 // finalizeClientConfig sets configuration fields on the client config that are
-// not staticly convertable and are from the agent.
+// not statically convertible and are from the agent.
 func (a *Agent) finalizeClientConfig(c *clientconfig.Config) error {
 	// Setup the logging
 	c.Logger = a.logger
@@ -641,6 +668,12 @@ func convertClientConfig(agentConfig *Config) (*clientconfig.Config, error) {
 	}
 	if agentConfig.Client.MemoryMB != 0 {
 		conf.MemoryMB = agentConfig.Client.MemoryMB
+	}
+	if agentConfig.Client.DiskTotalMB != 0 {
+		conf.DiskTotalMB = agentConfig.Client.DiskTotalMB
+	}
+	if agentConfig.Client.DiskFreeMB != 0 {
+		conf.DiskFreeMB = agentConfig.Client.DiskFreeMB
 	}
 	if agentConfig.Client.MaxKillTimeout != "" {
 		dur, err := time.ParseDuration(agentConfig.Client.MaxKillTimeout)
@@ -973,7 +1006,7 @@ func (a *Agent) setupClient() error {
 	}
 
 	// Set up a custom listener and dialer. This is used by Nomad clients when
-	// running consul-template functions that utilise the Nomad API. We lazy
+	// running consul-template functions that utilize the Nomad API. We lazy
 	// load this into the client config, therefore this needs to happen before
 	// we call NewClient.
 	a.builtinListener, a.builtinDialer = bufconndialer.New()
