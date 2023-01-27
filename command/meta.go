@@ -239,6 +239,7 @@ func (m *Meta) SetupUi(args []string) {
 		ErrorColor: cli.UiColorRed,
 		WarnColor:  cli.UiColorYellow,
 		InfoColor:  cli.UiColorGreen,
+		ColorWhen:  cli.UiColorAlways,
 		Ui:         m.Ui,
 	}
 }
