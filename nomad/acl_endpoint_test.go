@@ -3582,7 +3582,7 @@ func TestACL_OIDCCompleteAuth(t *testing.T) {
 		},
 	}
 
-	var completeAuthResp1 structs.ACLOIDCCompleteAuthResponse
+	var completeAuthResp1 structs.ACLCompleteAuthResponse
 	err := msgpackrpc.CallWithCodec(codec, structs.ACLOIDCCompleteAuthRPCMethod, &completeAuthReq1, &completeAuthResp1)
 	must.Error(t, err)
 	must.ErrorContains(t, err, "400")
@@ -3601,7 +3601,7 @@ func TestACL_OIDCCompleteAuth(t *testing.T) {
 		},
 	}
 
-	var completeAuthResp2 structs.ACLOIDCCompleteAuthResponse
+	var completeAuthResp2 structs.ACLCompleteAuthResponse
 	err = msgpackrpc.CallWithCodec(codec, structs.ACLOIDCCompleteAuthRPCMethod, &completeAuthReq2, &completeAuthResp2)
 	must.Error(t, err)
 	must.ErrorContains(t, err, "400")
@@ -3649,7 +3649,7 @@ func TestACL_OIDCCompleteAuth(t *testing.T) {
 		},
 	}
 
-	var completeAuthResp3 structs.ACLOIDCCompleteAuthResponse
+	var completeAuthResp3 structs.ACLCompleteAuthResponse
 	err = msgpackrpc.CallWithCodec(codec, structs.ACLOIDCCompleteAuthRPCMethod, &completeAuthReq3, &completeAuthResp3)
 	must.Error(t, err)
 	must.ErrorContains(t, err, "400")
@@ -3692,7 +3692,7 @@ func TestACL_OIDCCompleteAuth(t *testing.T) {
 		},
 	}
 
-	var completeAuthResp4 structs.ACLOIDCCompleteAuthResponse
+	var completeAuthResp4 structs.ACLCompleteAuthResponse
 	err = msgpackrpc.CallWithCodec(codec, structs.ACLOIDCCompleteAuthRPCMethod, &completeAuthReq4, &completeAuthResp4)
 	must.NoError(t, err)
 	must.NotNil(t, completeAuthResp4.ACLToken)
@@ -3725,7 +3725,7 @@ func TestACL_OIDCCompleteAuth(t *testing.T) {
 		},
 	}
 
-	var completeAuthResp5 structs.ACLOIDCCompleteAuthResponse
+	var completeAuthResp5 structs.ACLCompleteAuthResponse
 	err = msgpackrpc.CallWithCodec(codec, structs.ACLOIDCCompleteAuthRPCMethod, &completeAuthReq5, &completeAuthResp5)
 	must.NoError(t, err)
 	must.NotNil(t, completeAuthResp4.ACLToken)

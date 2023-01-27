@@ -771,6 +771,10 @@ const (
 	// ACLAuthMethodTypeOIDC the ACLAuthMethod.Type and represents an
 	// auth-method which uses the OIDC protocol.
 	ACLAuthMethodTypeOIDC = "OIDC"
+
+	// ACLAuthMethodTypeJWT the ACLAuthMethod.Type and represents an auth-method
+	// which uses the JWT type.
+	ACLAuthMethodTypeJWT = "JWT"
 )
 
 // ACLBindingRule contains a direct relation to an ACLAuthMethod and represents

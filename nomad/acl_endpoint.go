@@ -20,6 +20,7 @@ import (
 	policy "github.com/hashicorp/nomad/acl"
 	"github.com/hashicorp/nomad/helper"
 	"github.com/hashicorp/nomad/helper/uuid"
+	"github.com/hashicorp/nomad/lib/auth/jwt"
 	"github.com/hashicorp/nomad/lib/auth/oidc"
 	"github.com/hashicorp/nomad/nomad/state"
 	"github.com/hashicorp/nomad/nomad/state/paginator"
@@ -2570,7 +2571,7 @@ func (a *ACL) OIDCAuthURL(args *structs.ACLOIDCAuthURLRequest, reply *structs.AC
 // provider token for a Nomad ACL token, using the configured ACL role and
 // policy claims to provide authorization.
 func (a *ACL) OIDCCompleteAuth(
-	args *structs.ACLOIDCCompleteAuthRequest, reply *structs.ACLOIDCCompleteAuthResponse) error {
+	args *structs.ACLOIDCCompleteAuthRequest, reply *structs.ACLCompleteAuthResponse) error {
 
 	// The OIDC flow can only be used when the Nomad cluster has ACL enabled.
 	if !a.srv.config.ACLEnabled {
@@ -2733,5 +2734,85 @@ func (a *ACL) OIDCCompleteAuth(
 	// we will have exactly the same number of tokens returned as we sent. It
 	// is therefore safe to assume we have 1 token.
 	reply.ACLToken = tokenUpsertReply.Tokens[0]
+	return nil
+}
+
+// Login RPC performs non-interactive auth using a given AuthMethod. This method
+// can not be used for OIDC login flow.
+func (a *ACL) Login(args *structs.ACLLoginRequest, reply *structs.ACLCompleteAuthResponse) error {
+
+	// The login flow can only be used when the Nomad cluster has ACL enabled.
+	if !a.srv.config.ACLEnabled {
+		return aclDisabled
+	}
+
+	// Perform the initial forwarding within the region. This ensures we
+	// respect stale queries.
+	if done, err := a.srv.forward(structs.ACLLoginRPCMethod, args, args, reply); done {
+		return err
+	}
+
+	// Measure the login endpoint performance.
+	defer metrics.MeasureSince([]string{"nomad", "acl", "login"}, time.Now())
+
+	// Validate the request arguments to ensure it contains all the data it
+	// needs.
+	if err := args.Validate(); err != nil {
+		return structs.NewErrRPCCodedf(http.StatusBadRequest, "invalid login request: %v", err)
+	}
+
+	// Grab a snapshot of the state, so we can query it safely.
+	stateSnapshot, err := a.srv.fsm.State().Snapshot()
+	if err != nil {
+		return err
+	}
+
+	// Lookup the auth method from state, so we have the entire object
+	// available to us. It's important to check for nil on the auth method
+	// object, as it is possible the request was made with an incorrectly named
+	// auth method.
+	authMethod, err := stateSnapshot.GetACLAuthMethodByName(nil, args.AuthMethodName)
+	if err != nil {
+		return err
+	}
+	if authMethod == nil {
+		return structs.NewErrRPCCodedf(
+			http.StatusBadRequest,
+			"auth-method %q not found",
+			args.AuthMethodName,
+		)
+	}
+
+	// If the authentication method generates global ACL tokens, we need to
+	// forward the request onto the authoritative regional leader.
+	if authMethod.TokenLocalityIsGlobal() {
+		args.Region = a.srv.config.AuthoritativeRegion
+
+		if done, err := a.srv.forward(structs.ACLLoginRPCMethod, args, args, reply); done {
+			return err
+		}
+	}
+
+	// Validate the token depending on its method type
+	switch authMethod.Type {
+	case structs.ACLAuthMethodTypeJWT:
+		ctx := context.Background()
+		token, err := jwt.Validate(ctx, args.BearerToken, authMethod.Config)
+		if err != nil {
+			return structs.NewErrRPCCodedf(
+				http.StatusUnauthorized,
+				"unable to validate provided token: %v",
+				err,
+			)
+		}
+		reply.ACLToken = token
+	default:
+		return structs.NewErrRPCCodedf(
+			http.StatusBadRequest,
+			"unsupported auth-method type: %s",
+			authMethod.Type,
+		)
+	}
+
 	return nil
 }

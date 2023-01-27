@@ -165,6 +165,14 @@ const (
 	// Args: ACLOIDCCompleteAuthRequest
 	// Reply: ACLOIDCCompleteAuthResponse
 	ACLOIDCCompleteAuthRPCMethod = "ACL.OIDCCompleteAuth"
+
+	// ACLLoginRPCMethod is the RPC method for performing a non-OIDC login
+	// workflow. It exchanges the provided token for a Nomad ACL token with
+	// roles as defined within the remote provider.
+	//
+	// Args: ACLLoginRequest
+	// Reply: ACLCompleteAuthResponse
+	ACLLoginRPCMethod = "ACL.Login"
 )
 
 const (
@@ -181,14 +189,34 @@ const (
 	// maxACLBindingRuleDescriptionLength limits an ACL binding rules
 	// description length and should be used to validate the object.
 	maxACLBindingRuleDescriptionLength = 256
+
+	// ACLAuthMethodTokenLocalityLocal is the ACLAuthMethod.TokenLocality that
+	// will generate ACL tokens which can only be used on the local cluster the
+	// request was made.
+	ACLAuthMethodTokenLocalityLocal = "local"
+
+	// ACLAuthMethodTokenLocalityGlobal is the ACLAuthMethod.TokenLocality that
+	// will generate ACL tokens which can be used on all federated clusters.
+	ACLAuthMethodTokenLocalityGlobal = "global"
+
+	// ACLAuthMethodTypeOIDC the ACLAuthMethod.Type and represents an
+	// auth-method which uses the OIDC protocol.
+	ACLAuthMethodTypeOIDC = "OIDC"
+
+	// ACLAuthMethodTypeJWT the ACLAuthMethod.Type and represents an auth-method
+	// which uses the JWT type.
+	ACLAuthMethodTypeJWT = "JWT"
 )
 
 var (
 	// ValidACLRoleName is used to validate an ACL role name.
 	ValidACLRoleName = regexp.MustCompile("^[a-zA-Z0-9-]{1,128}$")
 
-	// validACLAuthMethodName is used to validate an ACL auth method name.
+	// ValidACLAuthMethodName is used to validate an ACL auth method name.
 	ValidACLAuthMethod = regexp.MustCompile("^[a-zA-Z0-9-]{1,128}$")
+
+	// ValitACLAuthMethodTypes lists supported auth method types.
+	ValidACLAuthMethodTypes = []string{ACLAuthMethodTypeOIDC, ACLAuthMethodTypeJWT}
 )
 
 // ACLTokenRoleLink is used to link an ACL token to an ACL role. The ACL token
@@ -802,7 +830,7 @@ func (a *ACLAuthMethod) Validate(minTTL, maxTTL time.Duration) error {
 			mErr.Errors, fmt.Errorf("invalid token locality '%s'", a.TokenLocality))
 	}
 
-	if a.Type != "OIDC" {
+	if !slices.Contains(ValidACLAuthMethodTypes, a.Type) {
 		mErr.Errors = append(
 			mErr.Errors, fmt.Errorf("invalid token type '%s'", a.Type))
 	}
@@ -1378,9 +1406,38 @@ func (a *ACLOIDCCompleteAuthRequest) Validate() error {
 	return mErr.ErrorOrNil()
 }
 
-// ACLOIDCCompleteAuthResponse is the response when the OIDC auth flow has been
+// ACLCompleteAuthResponse is the response when the auth flow has been
 // completed successfully.
-type ACLOIDCCompleteAuthResponse struct {
+type ACLCompleteAuthResponse struct {
 	ACLToken *ACLToken
 	WriteMeta
+}
+
+// ACLLoginRequest is the request object to begin completing the
+// OIDC auth cycle after receiving the callback from the OIDC provider.
+type ACLLoginRequest struct {
+
+	// AuthMethodName is the name of the auth method being used to login. This
+	// is a required parameter.
+	AuthMethodName string
+
+	// BearerToken is the token used to login. This is a required parameter.
+	BearerToken string
+
+	WriteRequest
+}
+
+// Validate ensures the request object contains all the required fields in
+// order to complete the authentication flow.
+func (a *ACLLoginRequest) Validate() error {
+
+	var mErr multierror.Error
+
+	if a.AuthMethodName == "" {
+		mErr.Errors = append(mErr.Errors, errors.New("missing auth method name"))
+	}
+	if a.BearerToken == "" {
+		mErr.Errors = append(mErr.Errors, errors.New("missing bearer token"))
+	}
+	return mErr.ErrorOrNil()
 }
