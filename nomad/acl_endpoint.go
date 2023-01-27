@@ -45,6 +45,10 @@ const (
 	// aclOIDCCallbackRequestExpiryTime is the deadline used when obtaining an
 	// OIDC provider token. This is used for HTTP requests to external APIs.
 	aclOIDCCallbackRequestExpiryTime = 60 * time.Second
+
+	// aclLoginRequestExpiryTime is the deadline used when performing HTTP
+	// requests to external APIs during the validation of bearer tokens.
+	aclLoginRequestExpiryTime = 60 * time.Second
 )
 
 // ACL endpoint is used for manipulating ACL tokens and policies
@@ -2793,11 +2797,17 @@ func (a *ACL) Login(args *structs.ACLLoginRequest, reply *structs.ACLCompleteAut
 		}
 	}
 
+	// Generate a context with a deadline. This is used when making remote HTTP
+	// requests.
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(aclLoginRequestExpiryTime))
+	defer cancel()
+
+	claims := map[string]interface{}{}
+
 	// Validate the token depending on its method type
 	switch authMethod.Type {
 	case structs.ACLAuthMethodTypeJWT:
-		ctx := context.Background()
-		token, err := jwt.Validate(ctx, args.BearerToken, authMethod.Config)
+		claims, err = jwt.Validate(ctx, args.BearerToken, authMethod.Config)
 		if err != nil {
 			return structs.NewErrRPCCodedf(
 				http.StatusUnauthorized,
@@ -2805,7 +2815,8 @@ func (a *ACL) Login(args *structs.ACLLoginRequest, reply *structs.ACLCompleteAut
 				err,
 			)
 		}
-		reply.ACLToken = token
+
+		// reply.ACLToken = token
 	default:
 		return structs.NewErrRPCCodedf(
 			http.StatusBadRequest,
@@ -2813,6 +2824,68 @@ func (a *ACL) Login(args *structs.ACLLoginRequest, reply *structs.ACLCompleteAut
 			authMethod.Type,
 		)
 	}
+
+	// FIXME JWT also supports BoundAudiences
+	// if len(authMethod.Config.BoundAudiences) > 0 {
+	// oidcReqOpts = append(oidcReqOpts, capOIDC.WithAudiences(authMethod.Config.BoundAudiences...))
+	// }
+
+	// Create a new binder object based on the current state snapshot to
+	// provide consistency within the RPC handler.
+	jwtBinder := oidc.NewBinder(stateSnapshot)
+
+	// Generate the data used by the go-bexpr selector that is an internal
+	// representation of the claims that can be understood by Nomad.
+	// TODO make sure i understand the relationship between user and id claims in jwt
+	jwtClaims, err := oidc.SelectorData(authMethod, claims, map[string]interface{}{})
+	if err != nil {
+		return err
+	}
+
+	tokenBindings, err := jwtBinder.Bind(authMethod, oidc.NewIdentity(authMethod.Config, jwtClaims))
+	if err != nil {
+		return err
+	}
+	if tokenBindings.None() && !tokenBindings.Management {
+		return structs.NewErrRPCCoded(http.StatusBadRequest, "no role or policy bindings matched")
+	}
+
+	// Build our token RPC request. The RPC handler includes a lot of specific
+	// logic, so we do not want to call Raft directly or copy that here. In the
+	// future we should try and extract out the logic into an interface, or at
+	// least a separate function.
+	token := structs.ACLToken{
+		Name:          "JWT-" + authMethod.Name,
+		Global:        authMethod.TokenLocalityIsGlobal(),
+		ExpirationTTL: authMethod.MaxTokenTTL,
+	}
+
+	if tokenBindings.Management {
+		token.Type = structs.ACLManagementToken
+	} else {
+		token.Type = structs.ACLClientToken
+		token.Policies = tokenBindings.Policies
+		token.Roles = tokenBindings.Roles
+	}
+
+	tokenUpsertRequest := structs.ACLTokenUpsertRequest{
+		Tokens: []*structs.ACLToken{&token},
+		WriteRequest: structs.WriteRequest{
+			Region:    a.srv.Region(),
+			AuthToken: a.srv.getLeaderAcl(),
+		},
+	}
+
+	var tokenUpsertReply structs.ACLTokenUpsertResponse
+
+	if err := a.srv.RPC(structs.ACLUpsertTokensRPCMethod, &tokenUpsertRequest, &tokenUpsertReply); err != nil {
+		return err
+	}
+
+	// The way the UpsertTokens RPC currently works, if we get no error, then
+	// we will have exactly the same number of tokens returned as we sent. It
+	// is therefore safe to assume we have 1 token.
+	reply.ACLToken = tokenUpsertReply.Tokens[0]
 
 	return nil
 }
