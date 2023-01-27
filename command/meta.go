@@ -7,11 +7,12 @@ import (
 	"strings"
 
 	"github.com/hashicorp/nomad/api"
+	cui "github.com/hashicorp/nomad/command/ui"
 	colorable "github.com/mattn/go-colorable"
 	"github.com/mitchellh/cli"
 	"github.com/mitchellh/colorstring"
 	"github.com/posener/complete"
-	"golang.org/x/crypto/ssh/terminal"
+	"golang.org/x/term"
 )
 
 const (
@@ -195,7 +196,7 @@ func (m *Meta) SetupUi(args []string) {
 	noColor := os.Getenv(EnvNomadCLINoColor) != ""
 	forceColor := os.Getenv(EnvNomadCLIForceColor) != ""
 
-	m.ErrDimensions.Width, m.ErrDimensions.Height, m.ErrDimensions.Err = terminal.GetSize(int(os.Stderr.Fd()))
+	m.ErrDimensions.Width, m.ErrDimensions.Height, m.ErrDimensions.Err = term.GetSize(int(os.Stderr.Fd()))
 
 	for _, arg := range args {
 		// Check if color is set
@@ -206,40 +207,17 @@ func (m *Meta) SetupUi(args []string) {
 		}
 	}
 
-	var outWriter io.Writer
-	var errWriter io.Writer
-
-	// Only use colorable UI if not disabled and stdout is a tty or colors are
-	// forced.
-	isStdOutTerminal := terminal.IsTerminal(int(os.Stdout.Fd()))
-	useColor := !noColor && (isStdOutTerminal || forceColor)
-	if useColor {
-		outWriter = colorable.NewColorableStdout()
-	} else {
-		outWriter = colorable.NewNonColorable(os.Stdout)
-	}
-
-	// Only use colorable writer if not disabled and stderr is a tty or colors are
-	// forced.
-	isStdErrTerminal := terminal.IsTerminal(int(os.Stderr.Fd()))
-	useColor = !noColor && (isStdErrTerminal || forceColor)
-	if useColor {
-		errWriter = colorable.NewColorableStderr()
-	} else {
-		outWriter = colorable.NewNonColorable(os.Stderr)
-	}
-
 	m.Ui = &cli.BasicUi{
 		Reader:      os.Stdin,
-		Writer:      outWriter,
-		ErrorWriter: errWriter,
+		Writer:      getWriterForStream(os.Stdout, noColor, forceColor),
+		ErrorWriter: getWriterForStream(os.Stderr, noColor, forceColor),
 	}
 
-	m.Ui = &cli.ColoredUi{
-		ErrorColor: cli.UiColorRed,
-		WarnColor:  cli.UiColorYellow,
-		InfoColor:  cli.UiColorGreen,
-		ColorWhen:  cli.UiColorAlways,
+	m.Ui = &cui.ColoredUi{
+		ErrorColor: cui.UiColorRed,
+		WarnColor:  cui.UiColorYellow,
+		InfoColor:  cui.UiColorGreen,
+		ColorWhen:  cui.UiColorAlways,
 		Ui:         m.Ui,
 	}
 }
@@ -337,3 +315,16 @@ type funcVar func(s string) error
 func (f funcVar) Set(s string) error { return f(s) }
 func (f funcVar) String() string     { return "" }
 func (f funcVar) IsBoolFlag() bool   { return false }
+
+func getWriterForStream(w *os.File, noColor, forceColor bool) io.Writer {
+	if noColor {
+		return colorable.NewNonColorable(w)
+	}
+	if forceColor {
+		return colorable.NewColorable(w)
+	}
+	if term.IsTerminal(int(w.Fd())) {
+		return colorable.NewColorable(w)
+	}
+	return colorable.NewNonColorable(w)
+}
