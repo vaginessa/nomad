@@ -4,7 +4,7 @@
     "client",
     "client/allocrunner/..."
   ],
-  "command": ["command/..."],
+  "command": ["command"],
   "drivers": ["drivers/..."],
   "quick": [
     "acl/...",
@@ -26,6 +26,7 @@
     "client/stats/...",
     "client/structs/...",
     "client/taskenv/...",
+    "command/ui",
     "command/agent/...",
     "command/raft_tools/...",
     "helper/...",
