@@ -17,7 +17,10 @@ job "example" {
         auth_soft_fail = true
       }
 
-      identity {}
+      identity {
+        env  = true
+        file = true
+      }
 
       resources {
         cpu    = 500
