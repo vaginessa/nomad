@@ -183,7 +183,7 @@ func (m *Meta) allNamespaces() bool {
 }
 
 func (m *Meta) Colorize() *colorstring.Colorize {
-	_, coloredUi := m.Ui.(*cli.ColoredUi)
+	_, coloredUi := m.Ui.(*cui.ColoredUi)
 
 	return &colorstring.Colorize{
 		Colors:  colorstring.DefaultColors,

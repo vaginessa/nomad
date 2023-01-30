@@ -9,7 +9,10 @@ import (
 
 	"github.com/creack/pty"
 	"github.com/hashicorp/nomad/ci"
+	cui "github.com/hashicorp/nomad/command/ui"
+	"github.com/mattn/go-colorable"
 	"github.com/mitchellh/cli"
+	"github.com/shoenig/test/must"
 	"github.com/stretchr/testify/require"
 )
 
@@ -71,13 +74,9 @@ func TestMeta_Colorize(t *testing.T) {
 		ExpectColor bool
 	}{
 		{
-			Name:        "disable colors if UI is not colored",
-			ExpectColor: false,
-		},
-		{
 			Name: "colors if UI is colored",
 			SetupFn: func(t *testing.T, m *Meta) {
-				m.Ui = &cli.ColoredUi{}
+				m.SetupUi([]string{})
 			},
 			ExpectColor: true,
 		},
@@ -148,8 +147,113 @@ func TestMeta_Colorize(t *testing.T) {
 			if tc.SetupFn != nil {
 				tc.SetupFn(t, m)
 			}
+			cui, _ := m.Ui.(*cui.ColoredUi)
+			bui, _ := cui.Ui.(*cli.BasicUi)
 
-			require.Equal(t, !tc.ExpectColor, m.Colorize().Disable)
+			if !tc.ExpectColor {
+				require.IsType(t, bui.Writer, &colorable.NonColorable{})
+				require.IsType(t, bui.Writer, &colorable.NonColorable{})
+			} else {
+				require.IsType(t, bui.Writer, &os.File{})
+				require.IsType(t, bui.Writer, &os.File{})
+			}
 		})
 	}
+}
+
+func TestMeta_ColorizeStderrWhenStdoutNotATTY(t *testing.T) {
+	// Create fake test terminal.
+	_, tty, err := pty.Open()
+
+	must.NoError(t, err)
+	defer tty.Close()
+
+	oldStderr := os.Stderr
+	oldStdout := os.Stdout
+	oFile, err := os.CreateTemp(t.TempDir(), "test")
+	must.NoError(t, err)
+
+	defer func() {
+		os.Stderr = oldStderr
+		os.Stdout = oldStdout
+	}()
+	os.Stdout = oFile
+	os.Stderr = tty
+
+	// Make sure color related environment variables are clean.
+	t.Setenv(EnvNomadCLIForceColor, "")
+	t.Setenv(EnvNomadCLINoColor, "")
+
+	// Run test case.
+	m := &Meta{}
+	m.SetupUi([]string{})
+
+	cui, _ := m.Ui.(*cui.ColoredUi)
+	bui, _ := cui.Ui.(*cli.BasicUi)
+
+	require.IsType(t, bui.Writer, &colorable.NonColorable{})
+	require.IsType(t, bui.ErrorWriter, &os.File{})
+}
+
+func TestMeta_ColorizeStdoutWhenStderrNotATTY(t *testing.T) {
+	// Create fake test terminal.
+	_, tty, err := pty.Open()
+
+	must.NoError(t, err)
+	defer tty.Close()
+
+	oldStderr := os.Stderr
+	oldStdout := os.Stdout
+	oFile, err := os.CreateTemp(t.TempDir(), "test")
+	must.NoError(t, err)
+
+	defer func() {
+		os.Stderr = oldStderr
+		os.Stdout = oldStdout
+	}()
+	os.Stdout = tty
+	os.Stderr = oFile
+
+	// Make sure color related environment variables are clean.
+	t.Setenv(EnvNomadCLIForceColor, "")
+	t.Setenv(EnvNomadCLINoColor, "")
+
+	// Run test case.
+	m := &Meta{}
+	m.SetupUi([]string{})
+
+	cui, _ := m.Ui.(*cui.ColoredUi)
+	bui, _ := cui.Ui.(*cli.BasicUi)
+
+	require.IsType(t, bui.Writer, &os.File{})
+	require.IsType(t, bui.ErrorWriter, &colorable.NonColorable{})
+}
+
+func TestMeta_ColorizeNoneWhenNotATTY(t *testing.T) {
+	oldStderr := os.Stderr
+	oldStdout := os.Stdout
+	td := t.TempDir()
+	oFile, err := os.CreateTemp(td, "test")
+	must.NoError(t, err)
+
+	defer func() {
+		os.Stderr = oldStderr
+		os.Stdout = oldStdout
+	}()
+	os.Stdout = oFile
+	os.Stderr = oFile
+
+	// Make sure color related environment variables are clean.
+	t.Setenv(EnvNomadCLIForceColor, "")
+	t.Setenv(EnvNomadCLINoColor, "")
+
+	// Run test case.
+	m := &Meta{}
+	m.SetupUi([]string{})
+
+	cui, _ := m.Ui.(*cui.ColoredUi)
+	bui, _ := cui.Ui.(*cli.BasicUi)
+
+	require.IsType(t, bui.Writer, &colorable.NonColorable{})
+	require.IsType(t, bui.ErrorWriter, &colorable.NonColorable{})
 }
